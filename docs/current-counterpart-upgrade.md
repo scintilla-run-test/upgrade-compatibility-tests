@@ -1,0 +1,1 @@
+The current-counterpart upgrade workflow runs local compatibility tests before current production contract-authority discovery. Private counterpart access intentionally fails closed when the cross-org credential is unavailable.
