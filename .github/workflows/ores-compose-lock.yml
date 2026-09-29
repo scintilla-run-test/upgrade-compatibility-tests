@@ -1,0 +1,32 @@
+name: ores-compose self-update lock resolver
+
+on:
+  push:
+    branches:
+      - test/ores-compose-self-update-lock
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: test/ores-compose-self-update-lock
+      - run: rustup toolchain install 1.88.0 --profile minimal
+      - name: Generate lock
+        run: cargo +1.88.0 generate-lockfile --manifest-path scratch/ores-compose-lock/Cargo.toml
+      - name: Commit lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ORESoftware'
+          git config user.email 'alexander.d.mills@gmail.com'
+          git add scratch/ores-compose-lock/Cargo.lock
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'test: resolve ores-compose self-update lock'
+          git push origin HEAD:test/ores-compose-self-update-lock
