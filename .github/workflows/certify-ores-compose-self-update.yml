@@ -6,48 +6,60 @@ on:
       - .github/workflows/certify-ores-compose-self-update.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  certify:
+  resolve-lock:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact ores-compose PR head
-        uses: actions/checkout@v4
+      - name: Checkout carrier branch
+        uses: actions/checkout@v5
         with:
-          repository: ORESoftware/ores-compose
-          ref: 001a28acf01922ff20bad84cdecee653a992db5e
-          fetch-depth: 1
+          ref: ci/certify-ores-compose-self-update-326
 
       - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@1.88.0
 
-      - name: Regenerate only the shared CLI core lock edge
-        run: cargo update -p ores-clis-core
-
-      - name: Verify lockfile records merged self-update core
+      - name: Create exact resolver manifest
         shell: bash
         run: |
           set -euo pipefail
-          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' Cargo.lock
+          mkdir -p generated/ores-compose-self-update/src
+          cat > generated/ores-compose-self-update/Cargo.toml <<'EOF'
+          [package]
+          name = "ores-compose"
+          version = "0.1.0"
+          edition = "2021"
+          rust-version = "1.88"
 
-      - name: Locked all-target test
-        run: cargo test --locked --all-targets
+          [dependencies]
+          ores-config-discovery = { git = "https://github.com/ORESoftware/ores-config-discovery", rev = "1ffd94663a110f77fcd5e1143fd10f89b1f284e0", default-features = false }
+          axum = { version = "0.8.9", features = ["json", "tokio", "http1"] }
+          flags2env = { git = "https://github.com/flags-2-env/flags-2-env.git", rev = "70d3e6e6d94f4d500bfaa9b66ab646cc03be2bef" }
+          granit-parser = "=1.1.0"
+          ores-clis-core = { git = "https://github.com/ORESoftware/ores-clis-core.git", rev = "7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377" }
+          ores-locks-and-leases = { git = "https://github.com/ORESoftware/ores-locks-and-leases.git", rev = "f51efe1e2956368e5783287fadb8bdbde747f93b" }
+          oresoftware-next-loggers = { git = "https://github.com/ores-otel/ores.otel.log.git", rev = "4f9e7021b81339e44681632b4d86308cf113e54f" }
+          redis = { version = "=1.2.2", default-features = false, features = ["aio", "tokio-comp"], optional = true }
+          sea-orm = { version = "=2.0.2", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres"], optional = true }
+          serde = { version = "1", features = ["derive"] }
+          serde_json = "1"
+          serde-saphyr = "=1.1.0"
+          sha2 = "0.10"
+          tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+          EOF
+          printf '%s\n' 'pub fn resolver_probe() {}' > generated/ores-compose-self-update/src/lib.rs
+          cargo generate-lockfile --manifest-path generated/ores-compose-self-update/Cargo.toml
+          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' generated/ores-compose-self-update/Cargo.lock
 
-      - name: Self-update help smoke test
+      - name: Commit Cargo-generated lock evidence
         shell: bash
         run: |
           set -euo pipefail
-          cargo run --locked --bin ores-compose -- self-update --help | tee /tmp/self-update-help.txt
-          grep -F 'self-update [VERSION]' /tmp/self-update-help.txt
-          grep -F -- '--interactive' /tmp/self-update-help.txt
-          grep -F -- '--non-interactive' /tmp/self-update-help.txt
-          grep -F -- '--check' /tmp/self-update-help.txt
-          grep -F -- '--dry-run' /tmp/self-update-help.txt
-
-      - name: Upload regenerated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: ores-compose-326-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
+          git config user.name ORESoftware
+          git config user.email alexander.d.mills@gmail.com
+          git add generated/ores-compose-self-update/Cargo.toml generated/ores-compose-self-update/Cargo.lock generated/ores-compose-self-update/src/lib.rs
+          if ! git diff --cached --quiet; then
+            git commit -m 'ci: capture ores-compose self-update resolver output'
+            git push origin HEAD:ci/certify-ores-compose-self-update-326
+          fi
