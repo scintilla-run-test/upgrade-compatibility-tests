@@ -20,6 +20,15 @@ jobs:
       - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@1.88.0
 
+      - name: Verify exact source lock seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock=generated/ores-compose-self-update/Cargo.lock
+          sed -i 's/03e8bd762f7479489c70ed6c768ddca99d7296857de437a68bcb2a94365b3fae/03e8bd762f7479489c70ed6c768ddca99d7296857de437a68dcb2a94365b3fae/' "$lock"
+          actual="$(git hash-object "$lock")"
+          test "$actual" = '67a11ae1436e016ccd6bae9cb243f7e0dc05db19'
+
       - name: Update shared CLI core from exact existing lock
         shell: bash
         run: |
