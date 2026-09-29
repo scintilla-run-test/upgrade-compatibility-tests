@@ -1,0 +1,53 @@
+name: certify-ores-compose-self-update
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/certify-ores-compose-self-update.yml
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact ores-compose PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ORESoftware/ores-compose
+          ref: 001a28acf01922ff20bad84cdecee653a992db5e
+          fetch-depth: 1
+
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Regenerate only the shared CLI core lock edge
+        run: cargo update -p ores-clis-core
+
+      - name: Verify lockfile records merged self-update core
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' Cargo.lock
+
+      - name: Locked all-target test
+        run: cargo test --locked --all-targets
+
+      - name: Self-update help smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked --bin ores-compose -- self-update --help | tee /tmp/self-update-help.txt
+          grep -F 'self-update [VERSION]' /tmp/self-update-help.txt
+          grep -F -- '--interactive' /tmp/self-update-help.txt
+          grep -F -- '--non-interactive' /tmp/self-update-help.txt
+          grep -F -- '--check' /tmp/self-update-help.txt
+          grep -F -- '--dry-run' /tmp/self-update-help.txt
+
+      - name: Upload regenerated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: ores-compose-326-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
