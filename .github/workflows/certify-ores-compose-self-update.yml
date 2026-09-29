@@ -4,12 +4,13 @@ on:
   pull_request:
     paths:
       - .github/workflows/certify-ores-compose-self-update.yml
+      - generated/ores-compose-self-update/**
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  resolve-lock:
+  certify:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout carrier branch
@@ -20,43 +21,39 @@ jobs:
       - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@1.88.0
 
-      - name: Verify exact source lock seed
+      - name: Verify promoted Cargo lock
         shell: bash
         run: |
           set -euo pipefail
           lock=generated/ores-compose-self-update/Cargo.lock
-          sed -i 's/03e8bd762f7479489c70ed6c768ddca99d7296857de437a68bcb2a94365b3fae/03e8bd762f7479489c70ed6c768ddca99d7296857de437a68dcb2a94365b3fae/' "$lock"
-          actual="$(git hash-object "$lock")"
-          test "$actual" = '67a11ae1436e016ccd6bae9cb243f7e0dc05db19'
-
-      - name: Update shared CLI core from exact existing lock
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo update \
-            --manifest-path generated/ores-compose-self-update/Cargo.toml \
-            -p ores-clis-core
-          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' generated/ores-compose-self-update/Cargo.lock
-          git diff -- generated/ores-compose-self-update/Cargo.lock
+          test "$(git hash-object "$lock")" = '656e00a8c88c4fdd6c217e42d59b00213ab5a2be'
+          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' "$lock"
 
       - name: Verify locked dependency graph
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo metadata \
-            --locked \
-            --manifest-path generated/ores-compose-self-update/Cargo.toml \
-            --format-version 1 \
-            >/dev/null
+        run: >-
+          cargo metadata --locked
+          --manifest-path generated/ores-compose-self-update/Cargo.toml
+          --format-version 1
+          >/dev/null
 
-      - name: Commit Cargo-generated narrow lock evidence
+      - name: Compile ores-compose self-update boundary
+        run: >-
+          cargo check --locked
+          --manifest-path generated/ores-compose-self-update/Cargo.toml
+          --bin ores-compose
+
+      - name: Exercise self-update help contract
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name ORESoftware
-          git config user.email alexander.d.mills@gmail.com
-          git add generated/ores-compose-self-update/Cargo.lock
-          if ! git diff --cached --quiet; then
-            git commit -m 'ci: capture narrow ores-clis-core lock update'
-            git push origin HEAD:ci/certify-ores-compose-self-update-326
-          fi
+          cargo run --quiet --locked \
+            --manifest-path generated/ores-compose-self-update/Cargo.toml \
+            --bin ores-compose -- self-update --help \
+            | tee /tmp/self-update-help.txt
+          grep -F 'self-update [VERSION]' /tmp/self-update-help.txt
+          grep -F -- '--interactive' /tmp/self-update-help.txt
+          grep -F -- '--non-interactive' /tmp/self-update-help.txt
+          grep -F -- '--check' /tmp/self-update-help.txt
+          grep -F -- '--dry-run' /tmp/self-update-help.txt
+          grep -F -- '--verify' /tmp/self-update-help.txt
+          grep -F -- '--no-verify' /tmp/self-update-help.txt
