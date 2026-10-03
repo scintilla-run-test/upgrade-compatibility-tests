@@ -1,0 +1,21 @@
+[package]
+name = "ores-compose"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+
+[dependencies]
+ores-config-discovery = { git = "https://github.com/ORESoftware/ores-config-discovery", rev = "1ffd94663a110f77fcd5e1143fd10f89b1f284e0", default-features = false }
+axum = { version = "0.8.9", features = ["json", "tokio", "http1"] }
+flags2env = { git = "https://github.com/flags-2-env/flags-2-env.git", rev = "70d3e6e6d94f4d500bfaa9b66ab646cc03be2bef" }
+granit-parser = "=1.1.0"
+ores-clis-core = { git = "https://github.com/ORESoftware/ores-clis-core.git", rev = "7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377" }
+ores-locks-and-leases = { git = "https://github.com/ORESoftware/ores-locks-and-leases.git", rev = "f51efe1e2956368e5783287fadb8bdbde747f93b" }
+oresoftware-next-loggers = { git = "https://github.com/ores-otel/ores.otel.log.git", rev = "4f9e7021b81339e44681632b4d86308cf113e54f" }
+redis = { version = "=1.2.2", default-features = false, features = ["aio", "tokio-comp"], optional = true }
+sea-orm = { version = "=2.0.2", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-saphyr = "=1.1.0"
+sha2 = "0.10"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }

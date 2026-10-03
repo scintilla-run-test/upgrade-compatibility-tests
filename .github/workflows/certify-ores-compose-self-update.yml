@@ -1,0 +1,59 @@
+name: certify-ores-compose-self-update
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/certify-ores-compose-self-update.yml
+      - generated/ores-compose-self-update/**
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout carrier branch
+        uses: actions/checkout@v5
+        with:
+          ref: ci/certify-ores-compose-self-update-326
+
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Verify promoted Cargo lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock=generated/ores-compose-self-update/Cargo.lock
+          test "$(git hash-object "$lock")" = '656e00a8c88c4fdd6c217e42d59b00213ab5a2be'
+          grep -F 'git+https://github.com/ORESoftware/ores-clis-core.git?rev=7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377#7c9acb2325796ecfcbbc8f1c90c6fec3ab0a5377' "$lock"
+
+      - name: Verify locked dependency graph
+        run: >-
+          cargo metadata --locked
+          --manifest-path generated/ores-compose-self-update/Cargo.toml
+          --format-version 1
+          >/dev/null
+
+      - name: Compile ores-compose self-update boundary
+        run: >-
+          cargo check --locked
+          --manifest-path generated/ores-compose-self-update/Cargo.toml
+          --bin ores-compose
+
+      - name: Exercise self-update help contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --locked \
+            --manifest-path generated/ores-compose-self-update/Cargo.toml \
+            --bin ores-compose -- self-update --help \
+            | tee /tmp/self-update-help.txt
+          grep -F 'self-update [VERSION]' /tmp/self-update-help.txt
+          grep -F -- '--interactive' /tmp/self-update-help.txt
+          grep -F -- '--non-interactive' /tmp/self-update-help.txt
+          grep -F -- '--check' /tmp/self-update-help.txt
+          grep -F -- '--dry-run' /tmp/self-update-help.txt
+          grep -F -- '--verify' /tmp/self-update-help.txt
+          grep -F -- '--no-verify' /tmp/self-update-help.txt
